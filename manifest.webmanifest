@@ -1,0 +1,8 @@
+{
+  "name": "LightDrop",
+  "short_name": "LightDrop",
+  "start_url": "lightdrop.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2a6df4"
+}
