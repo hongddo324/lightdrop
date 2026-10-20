@@ -20,12 +20,14 @@
   .tabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
   label { display:block; font-size: 14px; margin: 10px 0 4px; color: var(--muted); }
-  select, input[type=file] { width:100%; padding: 8px; font-size: 15px; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius: 8px; }
+  select, input[type=file], input[type=text] { width:100%; padding: 8px; font-size: 15px; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius: 8px; }
+  input[type=range] { width: 100%; }
   .row { display:flex; gap: 10px; flex-wrap: wrap; }
   .row > div { flex: 1; min-width: 140px; }
   .btn { display:inline-block; padding: 12px 18px; font-size: 16px; border:0; border-radius: 10px; background: var(--accent); color:#fff; cursor:pointer; text-decoration:none; }
   .btn:disabled { opacity: .4; cursor: default; }
   .btn.sec { background: transparent; color: var(--fg); border:1px solid var(--line); }
+  .link { background:none; border:0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 13px; padding: 0; margin-top: 10px; }
   .info { font-size: 14px; color: var(--muted); line-height: 1.6; margin-top: 10px; white-space: pre-line; }
   .hidden { display:none !important; }
   #camWrap { position: relative; width: 100%; background:#000; border-radius: 10px; overflow:hidden; }
@@ -33,14 +35,16 @@
   #overlay { position:absolute; inset:0; }
   .bar { height: 14px; background: var(--line); border-radius: 7px; overflow: hidden; margin-top: 10px; }
   .bar > div { height: 100%; width: 0; background: var(--ok); transition: width .2s; }
-  .stats { font-family: ui-monospace, Consolas, monospace; font-size: 13px; margin-top: 8px; white-space: pre-line; }
-  #blockMap { width: 100%; height: 40px; image-rendering: pixelated; margin-top: 8px; border-radius: 4px; background: var(--line); }
+  .stats { font-family: ui-monospace, Consolas, monospace; font-size: 13px; margin-top: 8px; white-space: pre-line; word-break: break-all; }
+  #segMap { width: 100%; height: 40px; image-rendering: pixelated; margin-top: 8px; border-radius: 4px; background: var(--line); }
   #result img, #result video { max-width: 100%; margin-top: 10px; border-radius: 8px; }
-  /* transmit screen: always pure white, independent of theme */
-  #tx { position: fixed; inset: 0; background: #fff; z-index: 10; display:flex; align-items:center; justify-content:center; flex-direction: column; }
+  /* transmit screen: dark surroundings so only the (dimmable) code itself emits light */
+  #tx { position: fixed; inset: 0; background: #000; z-index: 10; display:flex; align-items:center; justify-content:center; }
   #txCanvas { image-rendering: pixelated; }
-  #txStatus { position: absolute; bottom: 6px; left: 0; right: 0; text-align:center; color:#999; font: 12px ui-monospace, Consolas, monospace; }
-  #txStop { position: absolute; top: 8px; right: 8px; background:#eee; color:#333; border:0; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+  #txBar { position: absolute; bottom: 6px; left: 8px; right: 8px; display:flex; gap: 8px; align-items:center; color:#777; font: 12px ui-monospace, Consolas, monospace; }
+  #txBar span { flex: 1; text-align: center; }
+  #txBar input { width: 120px; padding: 4px 6px; background:#111; color:#aaa; border:1px solid #333; border-radius: 6px; font: inherit; }
+  #txStop { position: absolute; top: 8px; right: 8px; background:#222; color:#999; border:0; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -63,9 +67,11 @@
           <select id="grid">
             <option value="64">64 × 64</option>
             <option value="80">80 × 80</option>
-            <option value="96" selected>96 × 96</option>
+            <option value="96">96 × 96</option>
             <option value="112">112 × 112</option>
-            <option value="128">128 × 128</option>
+            <option value="128" selected>128 × 128</option>
+            <option value="144">144 × 144 (고화질 카메라)</option>
+            <option value="160">160 × 160 (고화질 카메라)</option>
           </select>
         </div>
         <div>
@@ -79,18 +85,32 @@
         <div>
           <label>초당 프레임</label>
           <select id="fps">
-            <option>4</option><option>6</option><option selected>8</option><option>10</option>
-            <option>12</option><option>15</option><option>20</option>
+            <option>6</option><option>8</option><option>10</option><option>12</option>
+            <option>15</option><option selected>20</option><option>30</option>
           </select>
         </div>
+        <div>
+          <label>보강 비율 (프레임 손실 대비 여분)</label>
+          <select id="rho">
+            <option value="0.1">10% (안정된 거치)</option>
+            <option value="0.2" selected>20%</option>
+            <option value="0.35">35%</option>
+            <option value="0.6">60% (손에 들고 찍기)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>코드 표시 크기 <b id="sizeV"></b></label><input type="range" id="size" min="20" max="100" value="45"></div>
+        <div><label>밝기 <b id="brightV"></b></label><input type="range" id="bright" min="25" max="100" value="60"></div>
       </div>
       <label><input type="checkbox" id="compress" checked> 압축 시도 (텍스트·문서에 효과적, 사진·영상은 자동으로 건너뜀)</label>
       <div class="info" id="sendInfo">파일을 고르면 예상 전송 시간이 표시됩니다.</div>
       <div style="margin-top:12px"><button class="btn" id="startTx" disabled>전송 화면 띄우기</button></div>
     </div>
     <div class="info">
-      팁: 화면 밝기를 최대로, 방은 너무 어둡지 않게. 받는 쪽 화면에 코드 전체와 흰 여백이 다 보이도록 맞추고 손을 고정하세요.
-      전송 화면에서 ↑/↓ = 속도 조절, Space = 일시정지, R = 처음부터 다시(받는 쪽을 늦게 켰을 때 유리), Esc = 종료.
+      팁: 코드는 작게·어둡게 띄우고 카메라를 가까이(10~20cm) 대도 됩니다. 칸 하나가 카메라 화면에서 5픽셀 이상이면 충분합니다.
+      전송 화면 단축키: ↑/↓ 속도, +/− 크기, [ / ] 밝기, Space 일시정지, R 처음부터, Esc 종료.
+      큰 파일은 여러 "구간"으로 나뉘어 전송됩니다. 받는 쪽에 "빠진 구간"이 표시되면 전송 화면 아래 칸에 그 번호(예: 3,17-19)를 넣으면 그 구간만 다시 보냅니다.
     </div>
   </section>
 
@@ -107,11 +127,12 @@
         <button class="btn sec hidden" id="stopRx">중지</button>
       </div>
       <div class="info" id="camMsg"></div>
+      <button class="link" id="wipe">이어받기용으로 보관된 데이터 지우기</button>
     </div>
     <div class="card hidden" id="rxCard">
       <div id="camWrap"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
       <div class="bar"><div id="prog"></div></div>
-      <canvas id="blockMap"></canvas>
+      <canvas id="segMap"></canvas>
       <div class="stats" id="rxStats"></div>
     </div>
     <div class="card hidden" id="result"></div>
@@ -120,11 +141,11 @@
 
 <div id="tx" class="hidden">
   <canvas id="txCanvas"></canvas>
-  <div id="txStatus"></div>
+  <div id="txBar"><span id="txStatus"></span><input id="txSegs" type="text" placeholder="다시 보낼 구간"></div>
   <button id="txStop">■ 중지</button>
 </div>
 
-<!-- ======================= CORE (no DOM; also runs under Node for tests) ======================= -->
+<!-- ======================= CORE (no DOM; also runs under Node for tests and inside Web Workers) ======================= -->
 <script id="ld-core">
 "use strict";
 const LD = (() => {
@@ -153,17 +174,17 @@ const LD = (() => {
 
   // ---------- Reed-Solomon ----------
   const genCache = new Map();
-  function rsGen(nsym) {
+  function rsGen(nsym) {   // generator polynomial as logs (-1 = zero coefficient)
     let g = genCache.get(nsym);
-    if (!g) { g = [1]; for (let i = 0; i < nsym; i++) g = pMul(g, [1, EXP[i]]); genCache.set(nsym, g); }
+    if (!g) { g = [1]; for (let i = 0; i < nsym; i++) g = pMul(g, [1, EXP[i]]); g = g.map(v => v ? LOG[v] : -1); genCache.set(nsym, g); }
     return g;
   }
   function rsEncode(msg, nsym) {
-    const gen = rsGen(nsym), out = new Uint8Array(msg.length + nsym);
+    const gl = rsGen(nsym), out = new Uint8Array(msg.length + nsym);
     out.set(msg);
     for (let i = 0; i < msg.length; i++) {
       const c = out[i];
-      if (c) for (let j = 1; j < gen.length; j++) out[i + j] ^= gmul(gen[j], c);
+      if (c) { const lc = LOG[c]; for (let j = 1; j < gl.length; j++) if (gl[j] >= 0) out[i + j] ^= EXP[lc + gl[j]]; }
     }
     out.set(msg);
     return out;
@@ -172,7 +193,7 @@ const LD = (() => {
   function rsDecode(cw, nsym) {
     const n = cw.length, synd = new Array(nsym + 1).fill(0);
     let any = 0;
-    for (let i = 0; i < nsym; i++) { const s = pEval(cw, EXP[i]); synd[i + 1] = s; any |= s; }
+    for (let i = 0; i < nsym; i++) { let y = 0; for (let j = 0; j < n; j++) y = (y && EXP[LOG[y] + i]) ^ cw[j]; synd[i + 1] = y; any |= y; }
     if (!any) return cw.subarray(0, n - nsym);
     // Berlekamp-Massey
     let errLoc = [1], oldLoc = [1];
@@ -221,10 +242,10 @@ const LD = (() => {
   const CRC_T = new Uint32Array(256);
   for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC_T[i] = c >>> 0; }
   function crc32(buf, init = 0) { let c = ~init; for (let i = 0; i < buf.length; i++) c = CRC_T[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return ~c >>> 0; }
-  // Symbol checksum is bound to session+seq so a torn capture (header of frame N, data of frame N+1) is rejected.
-  function symCrc(session, seq, sym) {
+  // Symbol checksum is bound to session+segment+symbol id, so a band misread as another symbol is rejected.
+  function symCrc(session, seg, esi, sym) {
     const id = new Uint8Array(8), dv = new DataView(id.buffer);
-    dv.setUint32(0, session); dv.setUint32(4, seq);
+    dv.setUint32(0, session); dv.setUint16(4, seg); dv.setUint16(6, esi);
     return crc32(sym, crc32(id));
   }
   function rng32(seed) {
@@ -234,55 +255,59 @@ const LD = (() => {
   function prngBytes(seed, n) { const r = rng32(seed), o = new Uint8Array(n); for (let i = 0; i < n; i++) o[i] = r() & 0xFF; return o; }
 
   // ---------- Frame layout ----------
-  // Grid G×G cells: rings 0-1 black border, ring 2 white gap, inner D×D = header(320 BW cells) + data cells.
+  // Grid G×G cells: rings 0-1 black border, ring 2 white gap, inner D×D = header(256 BW cells) + data cells.
   // Outside the grid the sender draws a QUIET-cell white margin.
-  const RING = 3, QUIET = 3, HDR_DATA = 24, HDR_NSYM = 16, HDR_BYTES = 40, HDR_CELLS = 320, CW_NSYM = 32;
-  const GRID_SIZES = [64, 80, 96, 112, 128];
+  // The data area is cut into horizontal bands. Each band is self-contained (own RS codewords, own symbol id
+  // and CRC), so a capture torn by the display refresh still yields every band the tear line doesn't cross.
+  const RING = 3, QUIET = 3, HDR_DATA = 16, HDR_NSYM = 16, HDR_BYTES = 32, HDR_CELLS = 256, NSYM = 32, BAND = 1100, BH = 8;
+  const GRID_SIZES = [64, 80, 96, 112, 128, 144, 160], SEG_K = 1024;
   const layouts = new Map();
   function layout(G, bpc) {
     const key = G * 10 + bpc;
     if (layouts.has(key)) return layouts.get(key);
-    const D = G - 2 * RING, dataCells = D * D - HDR_CELLS, bits = dataCells * bpc;
-    const nbytes = Math.ceil(bits / 8), C = Math.floor(bits / 8);
-    const ncw = Math.ceil(C / 255), base = Math.floor(C / ncw), extra = C % ncw;
-    const lens = [], dlens = []; let P = 0;
-    for (let k = 0; k < ncw; k++) { const l = base + (k < extra ? 1 : 0); lens.push(l); dlens.push(l - CW_NSYM); P += l - CW_NSYM; }
-    // interleave map: byte t of codeword k -> stream position
+    const D = G - 2 * RING, cells = D * D - HDR_CELLS, nbytes = Math.ceil(cells * bpc / 8), C = Math.floor(cells * bpc / 8);
+    const nb = Math.max(1, Math.round(C / BAND)), Cb = Math.floor(C / nb), ncw = Math.ceil(Cb / 255);
+    const lens = Array.from({ length: ncw }, (_, k) => Math.floor(Cb / ncw) + (k < Cb % ncw ? 1 : 0));
+    const P = Cb - ncw * NSYM, S = (P - BH) & ~3;
+    // interleave map inside a band: byte t of codeword k -> band position
     const imap = lens.map(l => new Int32Array(l));
-    let p = 0; const maxL = Math.max(...lens);
-    for (let t = 0; t < maxL; t++) for (let k = 0; k < ncw; k++) if (t < lens[k]) imap[k][t] = p++;
-    const L = { G, bpc, D, dataCells, nbytes, C, ncw, lens, dlens, P, S: P - 4, imap,
+    let p = 0;
+    for (let t = 0; t < lens[0]; t++) for (let k = 0; k < ncw; k++) if (t < lens[k]) imap[k][t] = p++;
+    const L = { G, bpc, D, nbytes, nb, Cb, ncw, lens, P, S, imap,
       whH: prngBytes(0x5EED1234, HDR_BYTES), whD: prngBytes(0x0DDBA110 + G * 7 + bpc, nbytes) };
     layouts.set(key, L);
     return L;
   }
   const ringOf = (G, r, c) => Math.min(r, c, G - 1 - r, G - 1 - c);
 
-  function buildHeader(G, bpc, session, seq, K, total) {
+  // The header is identical in every frame of a session, so tearing never corrupts it.
+  function buildHeader(G, bpc, session, total, segK) {
     const h = new Uint8Array(HDR_DATA), dv = new DataView(h.buffer);
-    h[0] = 0x4C; h[1] = 0x44; h[2] = 1; h[3] = G; h[4] = bpc; h[5] = CW_NSYM;
-    dv.setUint32(6, session); dv.setUint32(10, seq); dv.setUint32(14, K); dv.setUint32(18, total);
+    h[0] = 0x4C; h[1] = 0x44; h[2] = 2; h[3] = G; h[4] = bpc;
+    dv.setUint32(5, session); dv.setUint32(9, total % 2 ** 32); h[13] = Math.floor(total / 2 ** 32); dv.setUint16(14, segK);
     return h;
   }
   function parseHeader(h) {
-    if (h[0] !== 0x4C || h[1] !== 0x44 || h[2] !== 1 || h[5] !== CW_NSYM) return null;
+    if (h[0] !== 0x4C || h[1] !== 0x44 || h[2] !== 2) return null;
     if (!GRID_SIZES.includes(h[3]) || h[4] < 1 || h[4] > 3) return null;
-    const dv = new DataView(h.buffer, h.byteOffset, h.byteLength);
-    return { G: h[3], bpc: h[4], session: dv.getUint32(6), seq: dv.getUint32(10), K: dv.getUint32(14), total: dv.getUint32(18) };
+    const dv = new DataView(h.buffer, h.byteOffset, h.byteLength), segK = dv.getUint16(14);
+    if (!segK) return null;
+    return { G: h[3], bpc: h[4], session: dv.getUint32(5), total: dv.getUint32(9) + h[13] * 2 ** 32, segK };
   }
 
   // Produces G*G cell colors, each 0..7 = (R<<2)|(G<<1)|B
-  function encodeFrame(L, hdr24, payload) {
+  function encodeFrame(L, hdr16, bands) {
     const { G, D, bpc } = L;
-    const h = rsEncode(hdr24, HDR_NSYM);
+    const h = rsEncode(hdr16, HDR_NSYM);
     for (let i = 0; i < HDR_BYTES; i++) h[i] ^= L.whH[i];
     const buf = new Uint8Array(L.nbytes);
-    let off = 0;
-    for (let k = 0; k < L.ncw; k++) {
-      const cw = rsEncode(payload.subarray(off, off + L.dlens[k]), CW_NSYM);
-      off += L.dlens[k];
-      const m = L.imap[k];
-      for (let t = 0; t < cw.length; t++) buf[m[t]] = cw[t];
+    for (let b = 0; b < L.nb; b++) {
+      let off = 0;
+      for (let k = 0; k < L.ncw; k++) {
+        const dl = L.lens[k] - NSYM, cw = rsEncode(bands[b].subarray(off, off + dl), NSYM), m = L.imap[k], base = b * L.Cb;
+        off += dl;
+        for (let t = 0; t < cw.length; t++) buf[base + m[t]] = cw[t];
+      }
     }
     for (let i = 0; i < L.nbytes; i++) buf[i] ^= L.whD[i];
     const grid = new Uint8Array(G * G);
@@ -300,168 +325,141 @@ const LD = (() => {
     return grid;
   }
 
-  // ---------- Fountain code (systematic LT, robust soliton) ----------
-  function solitonCDF(K) {
-    if (K <= 1) return new Float64Array([0, 1]);
-    const c = 0.03, delta = 0.5, R = c * Math.log(K / delta) * Math.sqrt(K);
-    const pivot = Math.max(1, Math.min(K, Math.floor(K / R)));
-    const p = new Float64Array(K + 1);
-    p[1] = 1 / K;
-    for (let d = 2; d <= K; d++) p[d] = 1 / (d * (d - 1));
-    for (let d = 1; d < pivot; d++) p[d] += R / (d * K);
-    p[pivot] += Math.max(0, R * Math.log(R / delta) / K);
-    let s = 0; for (let d = 1; d <= K; d++) s += p[d];
-    const cdf = new Float64Array(K + 1); let acc = 0;
-    for (let d = 1; d <= K; d++) { acc += p[d] / s; cdf[d] = acc; }
-    cdf[K] = 1;
-    return cdf;
+  // ---------- Fountain code: per segment, systematic + dense random GF(2) ----------
+  // A file is split into blocks of S bytes, grouped into segments of up to SEG_K blocks.
+  //   esi < K  : the plain block (systematic pass, nothing to decode when nothing is lost)
+  //   esi >= K : XOR of a pseudo-random half of the segment's blocks
+  // Any K symbols of a segment that are linearly independent recover it; with dense random rows that
+  // takes K + ~2 symbols regardless of which ones were lost (failure odds halve with every extra symbol).
+  const segKey = (session, seg) => (session ^ Math.imul(seg + 1, 0x85EBCA6B)) >>> 0;
+  function coefs(K, key, esi) {
+    const w = (K + 31) >> 5, c = new Uint32Array(w);
+    if (esi < K) { c[esi >> 5] = 1 << (esi & 31); return c; }
+    const r = rng32(key ^ Math.imul(esi, 0x9E3779B1));
+    for (let i = 0; i < w; i++) c[i] = r();
+    if (K & 31) c[w - 1] &= -1 >>> (32 - (K & 31));
+    if (c.every(x => !x)) { const i = esi % K; c[i >> 5] = 1 << (i & 31); }
+    return c;
   }
-  // Which source blocks are XORed into symbol #seq.
-  //   seq < K           : plain block (systematic pass, zero overhead when nothing is lost)
-  //   seq >= K, odd     : "dense" symbol (random half of blocks, capped) - almost never redundant,
-  //                       solved by Gaussian elimination when few blocks remain
-  //   seq >= K, even    : robust-soliton LT symbol - lets peeling make progress for receivers that join late
-  function symbolIndices(seq, K, session, cdf) {
-    if (seq < K) return [seq];
-    const r = rng32(Math.imul(seq, 0x9E3779B1) ^ session);
-    let d;
-    if (seq & 1) d = Math.max(1, Math.min(2000, K >> 1));
-    else {
-      const u = r() / 4294967296;
-      let lo = 1, hi = K;
-      while (lo < hi) { const m = (lo + hi) >> 1; if (cdf[m] < u) lo = m + 1; else hi = m; }
-      d = lo;
-    }
-    if (d * 2 > K) {
-      const a = Array.from({ length: K }, (_, i) => i);
-      for (let i = 0; i < d; i++) { const j = i + (r() % (K - i)); const t = a[i]; a[i] = a[j]; a[j] = t; }
-      return a.slice(0, d);
-    }
-    const s = new Set();
-    while (s.size < d) s.add(r() % K);
-    return [...s];
-  }
-  function xorInto(dst, src) { for (let i = 0; i < dst.length; i++) dst[i] ^= src[i]; }
+  function xor32(dst, src) { for (let i = 0; i < dst.length; i++) dst[i] ^= src[i]; }
 
   class Sender {
-    constructor(stream, G, bpc, session) {
-      this.L = layout(G, bpc);
-      this.S = this.L.S;
-      this.total = stream.length;
-      this.K = Math.max(1, Math.ceil(stream.length / this.S));
-      this.data = new Uint8Array(this.K * this.S);
-      this.data.set(stream);
-      this.session = session >>> 0;
-      this.cdf = null;
+    // src: Uint8Array of the whole stream, or (seg) => Uint8Array(segLen*S) | null (null = still loading)
+    constructor(total, G, bpc, session, src, segK = SEG_K) {
+      const L = this.L = layout(G, bpc);
+      this.S = L.S; this.total = total; this.session = session >>> 0; this.rho = 0.2;
+      this.K = Math.max(1, Math.ceil(total / this.S)); this.segK = Math.min(segK, this.K); this.nseg = Math.ceil(this.K / this.segK);
+      this.src = typeof src === 'function' ? src : (j) => {
+        const [a, b] = this.segRange(j), o = new Uint8Array(b - a);
+        o.set(src.subarray(a, Math.min(b, src.length))); return o;
+      };
+      this.hdr = buildHeader(G, bpc, this.session, total, this.segK);
+      this.next = new Map(); this.cj = -1; this.cd = null;
     }
-    block(i) { return this.data.subarray(i * this.S, (i + 1) * this.S); }
-    symbol(seq) {
-      if (seq >= this.K && !this.cdf) this.cdf = solitonCDF(this.K);
-      const sym = new Uint8Array(this.S);
-      for (const i of symbolIndices(seq, this.K, this.session, this.cdf)) xorInto(sym, this.block(i));
-      return sym;
+    segLen(j) { return Math.min(this.segK, this.K - j * this.segK); }
+    segRange(j) { const a = j * this.segK * this.S; return [a, a + this.segLen(j) * this.S]; }
+    symbol(j, esi) {
+      if (this.cj !== j) { const d = this.src(j); if (!d) return null; this.cj = j; this.cd = new Uint32Array(d.buffer, d.byteOffset, d.length >> 2); }
+      const K = this.segLen(j), S4 = this.S >> 2, out = new Uint32Array(S4), c = coefs(K, segKey(this.session, j), esi);
+      for (let w = 0; w < c.length; w++) for (let x = c[w]; x; x &= x - 1) {
+        const i = (w << 5) + 31 - Math.clz32(x & -x), o = i * S4;
+        for (let k = 0; k < S4; k++) out[k] ^= this.cd[o + k];
+      }
+      return new Uint8Array(out.buffer);
     }
-    frame(seq) {
-      const sym = this.symbol(seq);
-      const payload = new Uint8Array(this.L.P);
-      new DataView(payload.buffer).setUint32(0, symCrc(this.session, seq, sym));
-      payload.set(sym, 4);
-      return encodeFrame(this.L, buildHeader(this.L.G, this.L.bpc, this.session, seq, this.K, this.total), payload);
+    // Order of symbols: each listed segment gets its K plain blocks plus ceil(K*rho)+1 repair symbols,
+    // then the list repeats with repair symbols only (fresh ones every round).
+    *schedule(segs, repairOnly = false) {
+      for (let pass = repairOnly ? 1 : 0; ; pass++) for (const j of segs) {
+        const K = this.segLen(j);
+        if (!pass) for (let e = 0; e < K; e++) yield [j, e];
+        for (let n = Math.ceil(K * this.rho) + 1; n > 0; n--) {
+          const e = this.next.get(j) || K;
+          this.next.set(j, e >= 65535 ? K : e + 1);
+          yield [j, e];
+        }
+      }
+    }
+    // items: L.nb pairs [seg, esi]; returns the cell grid, or null if a segment's data isn't loaded yet
+    frame(items) {
+      const L = this.L, bands = [];
+      for (const [j, e] of items) {
+        const s = this.symbol(j, e);
+        if (!s) return null;
+        const p = new Uint8Array(L.P), dv = new DataView(p.buffer);
+        dv.setUint16(0, j); dv.setUint16(2, e); dv.setUint32(4, symCrc(this.session, j, e, s)); p.set(s, BH);
+        bands.push(p);
+      }
+      return encodeFrame(L, this.hdr, bands);
     }
   }
 
-  class LTDecoder {
-    constructor(K, S, session) {
-      this.K = K; this.S = S; this.session = session;
-      this.blocks = new Array(K).fill(null); this.known = 0;
-      this.adj = Array.from({ length: K }, () => []);
-      this.cdf = null; this.pending = 0; this.lastTry = 0;
-    }
-    get done() { return this.known === this.K; }
-    add(seq, data) {
-      if (seq >= this.K && !this.cdf) this.cdf = solitonCDF(this.K);
-      const idx = symbolIndices(seq, this.K, this.session, this.cdf);
-      const d = Uint8Array.from(data), unk = [];
-      for (const i of idx) { if (this.blocks[i]) xorInto(d, this.blocks[i]); else unk.push(i); }
-      if (unk.length === 0) return;
-      if (unk.length === 1) { this._resolve(unk[0], d); return; }
-      const sym = { unk: new Set(unk), data: d, done: false };
-      for (const i of unk) this.adj[i].push(sym);
-      this.pending++;
-      this._maybeSolve();
-    }
-    // Peeling stalls when most blocks are already known; then solve the leftover unknowns by
-    // Gaussian elimination over GF(2) using every pending symbol. Bounded so it stays fast.
-    _maybeSolve() {
-      const u = this.K - this.known;
-      if (u > 1000 || this.pending < u || this.pending < this.lastTry + 1 + (u >> 6)) return;
-      this.lastTry = this.pending;
-      const syms = new Set();
-      for (let i = 0; i < this.K; i++) if (!this.blocks[i]) for (const s of this.adj[i]) if (!s.done) syms.add(s);
-      const cols = [], colOf = new Map();
-      for (let i = 0; i < this.K; i++) if (!this.blocks[i]) { colOf.set(i, cols.length); cols.push(i); }
-      const cw = (u + 31) >> 5, dw = (this.S + 3) >> 2;
-      const rows = [...syms].map(s => {
-        const c = new Uint32Array(cw), d = new Uint32Array(dw);
-        for (const i of s.unk) { const k = colOf.get(i); c[k >> 5] |= 1 << (k & 31); }
-        new Uint8Array(d.buffer).set(s.data);
-        return { c, d, s };
-      });
-      const eliminate = (rows, withData) => {
-        let rank = 0;
-        for (let k = 0; k < u && rank < rows.length; k++) {
-          const w = k >> 5, b = 1 << (k & 31);
-          let p = rank; while (p < rows.length && !(rows[p].c[w] & b)) p++;
-          if (p === rows.length) continue;
-          [rows[rank], rows[p]] = [rows[p], rows[rank]];
-          const pr = rows[rank];
-          for (let r = 0; r < rows.length; r++) {
-            if (r === rank || !(rows[r].c[w] & b)) continue;
-            const rc = rows[r].c;
-            for (let j = w; j < cw; j++) rc[j] ^= pr.c[j];
-            if (withData) { const rd = rows[r].d; for (let j = 0; j < dw; j++) rd[j] ^= pr.d[j]; }
-          }
-          rank++;
-        }
-        return rank;
-      };
-      // dry run on coefficients only (cheap); the expensive data pass runs only if it will free blocks
-      const dry = rows.map(r => ({ c: r.c.slice() }));
-      const dryRank = eliminate(dry, false);
-      let useful = false;
-      for (let r = 0; r < dryRank && !useful; r++) {
-        let n = 0; for (let j = 0; j < cw && n < 2; j++) { let x = dry[r].c[j]; while (x && n < 2) { n++; x &= x - 1; } }
-        useful = n === 1;
+  // Incremental Gaussian elimination over GF(2). Pivot rows are stored with their lowest set bit as
+  // the pivot column, so each new symbol costs at most one pass over the existing pivots.
+  class SegDecoder {
+    constructor(K, S, key) { this.K = K; this.S4 = S >> 2; this.key = key; this.piv = new Array(K); this.rank = 0; this.seen = new Set(); }
+    add(esi, data) {
+      if (this.seen.has(esi)) return false;
+      this.seen.add(esi);
+      const c = coefs(this.K, this.key, esi), d = new Uint32Array(this.S4), W = c.length;
+      new Uint8Array(d.buffer).set(data.subarray(0, this.S4 * 4));
+      for (let w = 0; w < W; w++) while (c[w]) {
+        const col = (w << 5) + 31 - Math.clz32(c[w] & -c[w]), p = this.piv[col];
+        if (!p) { this.piv[col] = { c, d }; this.rank++; return true; }
+        for (let i = w; i < W; i++) c[i] ^= p.c[i];
+        xor32(d, p.d);
       }
-      if (!useful) return;
-      const rank = eliminate(rows, true);
-      // any row reduced to a single unknown is a solved block (works for partial rank too)
-      const solved = [];
-      for (let r = 0; r < rank; r++) {
-        let k = -1, n = 0;
-        for (let j = 0; j < cw && n < 2; j++) { let x = rows[r].c[j]; while (x) { n++; k = j * 32 + (31 - Math.clz32(x & -x)); x &= x - 1; } }
-        if (n === 1) solved.push([cols[k], new Uint8Array(rows[r].d.buffer, 0, this.S).slice()]);
-      }
-      for (const [i, d] of solved) this._resolve(i, d);
+      return false;
     }
-    _resolve(i0, d0) {
-      const queue = [[i0, d0]];
-      while (queue.length) {
-        const [i, d] = queue.pop();
-        if (this.blocks[i]) continue;
-        this.blocks[i] = d; this.known++;
-        const list = this.adj[i]; this.adj[i] = [];
-        for (const sym of list) {
-          if (sym.done) continue;
-          xorInto(sym.data, d); sym.unk.delete(i);
-          if (sym.unk.size === 1) { sym.done = true; this.pending--; queue.push([sym.unk.values().next().value, sym.data]); }
+    get done() { return this.rank === this.K; }
+    output() {   // back-substitution, highest column first
+      const S4 = this.S4, out = new Uint32Array(this.K * S4);
+      for (let col = this.K - 1; col >= 0; col--) {
+        const { c, d } = this.piv[col], o = out.subarray(col * S4, (col + 1) * S4);
+        o.set(d); c[col >> 5] &= ~(1 << (col & 31));
+        for (let w = col >> 5; w < c.length; w++) for (let x = c[w]; x; x &= x - 1) {
+          const j = (w << 5) + 31 - Math.clz32(x & -x), b = j * S4;
+          for (let k = 0; k < S4; k++) o[k] ^= out[b + k];
         }
       }
+      this.piv = null;
+      return new Uint8Array(out.buffer);
     }
-    output(total) {
+  }
+
+  // Collects symbols for one session. parts[j] holds each finished segment (or whatever onSeg returns for it).
+  class Collector {
+    constructor(hdr) {
+      this.hdr = hdr; this.S = layout(hdr.G, hdr.bpc).S;
+      this.K = Math.max(1, Math.ceil(hdr.total / this.S)); this.segK = hdr.segK; this.nseg = Math.ceil(this.K / this.segK);
+      this.dec = new Array(this.nseg).fill(null); this.done = new Uint8Array(this.nseg); this.ndone = 0; this.known = 0;
+      this.parts = new Array(this.nseg); this.onSeg = null;
+    }
+    segLen(j) { return Math.min(this.segK, this.K - j * this.segK); }
+    add(j, esi, data) {
+      if (j >= this.nseg || this.done[j]) return false;
+      const d = this.dec[j] || (this.dec[j] = new SegDecoder(this.segLen(j), this.S, segKey(this.hdr.session, j)));
+      if (!d.add(esi, data)) return false;
+      this.known++;
+      if (d.done) this._finish(j, d.output());
+      return true;
+    }
+    restore(j, part) {   // segment recovered from storage (resume)
+      if (j >= this.nseg || this.done[j]) return;
+      this.known += this.segLen(j) - (this.dec[j] ? this.dec[j].rank : 0);
+      this._finish(j, part, true);
+    }
+    _finish(j, bytes, restored) {
+      this.dec[j] = null; this.done[j] = 1; this.ndone++;
+      this.parts[j] = this.onSeg && !restored ? this.onSeg(j, bytes) : bytes;
+    }
+    segProgress(j) { return this.done[j] ? 1 : this.dec[j] ? this.dec[j].rank / this.segLen(j) : 0; }
+    get complete() { return this.ndone === this.nseg; }
+    get progress() { return this.known / this.K; }
+    output() {   // only when every part is a Uint8Array (tests)
       const out = new Uint8Array(this.K * this.S);
-      for (let i = 0; i < this.K; i++) out.set(this.blocks[i], i * this.S);
-      return out.subarray(0, total);
+      this.parts.forEach((p, j) => out.set(p, j * this.segK * this.S));
+      return out.subarray(0, this.hdr.total);
     }
   }
 
@@ -566,7 +564,7 @@ const LD = (() => {
   const gridSrc = (G) => [[0, 0], [G, 0], [G, G], [0, G]];
 
   // Nudges the 4 corners so the black border / white gap edges line up with the grid lines.
-  function refineCorners(img, corners, G) {
+  function refineCorners(img, corners, G, iters = 4, step0 = 0.35) {
     const offs = [0.12, 0.3];
     const score = (q) => {
       const H = homography(gridSrc(G), q); if (!H) return -Infinity;
@@ -581,8 +579,8 @@ const LD = (() => {
       return sc;
     };
     const per = corners.reduce((a, p, i) => a + Math.hypot(p[0] - corners[(i + 1) % 4][0], p[1] - corners[(i + 1) % 4][1]), 0);
-    let step = 0.35 * per / (4 * G), q = corners.map(p => p.slice()), best = score(q);
-    for (let it = 0; it < 4; it++, step /= 2) {
+    let step = step0 * per / (4 * G), q = corners.map(p => p.slice()), best = score(q);
+    for (let it = 0; it < iters; it++, step /= 2) {
       for (let ci = 0; ci < 4; ci++) {
         const base = q[ci]; let bp = base;
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
@@ -630,13 +628,13 @@ const LD = (() => {
     return hdr && hdr.G === G ? hdr : null;
   }
 
-  function readData(img, H, L, r, hdr) {
+  // Returns the symbols of every band that decodes and passes its CRC.
+  function readBands(img, H, L, r, session) {
     const { D, bpc } = L, n = D * D, smp = sampler(img, H, r), v = new Float32Array(n * 3);
     for (let k = 0; k < n; k++) smp(RING + (k % D) + 0.5, RING + ((k / D) | 0) + 0.5, v, k * 3);
     // per-channel local mean threshold (data is whitened, so ~50% of cells are "on" in every window)
-    const W1 = D + 1, rad = 3, th = new Float32Array(n * 3);
+    const W1 = D + 1, rad = 3, th = new Float32Array(n * 3), ii = new Float64Array(W1 * W1);
     for (let c = 0; c < 3; c++) {
-      const ii = new Float64Array(W1 * W1);
       for (let y = 0; y < D; y++) { let row = 0; for (let x = 0; x < D; x++) { row += v[(y * D + x) * 3 + c]; ii[(y + 1) * W1 + x + 1] = ii[y * W1 + x + 1] + row; } }
       for (let y = 0; y < D; y++) {
         const y0 = Math.max(0, y - rad), y1 = Math.min(D, y + rad + 1);
@@ -649,22 +647,25 @@ const LD = (() => {
     const buf = new Uint8Array(L.nbytes);
     for (let k = HDR_CELLS; k < n; k++) {
       const o = k * 3, rb = v[o] > th[o], gb = v[o + 1] > th[o + 1], bb = v[o + 2] > th[o + 2];
-      const vals = bpc === 3 ? [rb, gb, bb] : bpc === 2 ? [rb, gb] : [rb + gb + bb >= 2];
+      const bits = bpc === 3 ? (rb << 2) | (gb << 1) | bb : bpc === 2 ? (rb << 1) | gb : +(rb + gb + bb >= 2);
       const bp = (k - HDR_CELLS) * bpc;
-      for (let b = 0; b < bpc; b++) if (vals[b]) buf[(bp + b) >> 3] |= 0x80 >> ((bp + b) & 7);
+      for (let b = 0; b < bpc; b++) if ((bits >> (bpc - 1 - b)) & 1) buf[(bp + b) >> 3] |= 0x80 >> ((bp + b) & 7);
     }
     for (let i = 0; i < L.nbytes; i++) buf[i] ^= L.whD[i];
-    const payload = new Uint8Array(L.P); let off = 0, fixed = 0;
-    for (let k = 0; k < L.ncw; k++) {
-      const m = L.imap[k], cw = new Uint8Array(L.lens[k]);
-      for (let t = 0; t < cw.length; t++) cw[t] = buf[m[t]];
-      const dec = rsDecode(cw, CW_NSYM);
-      if (!dec) return { ok: false, failedCw: k };
-      payload.set(dec, off); off += dec.length;
+    const out = [];
+    band: for (let b = 0; b < L.nb; b++) {
+      const p = new Uint8Array(L.P), base = b * L.Cb; let off = 0;
+      for (let k = 0; k < L.ncw; k++) {
+        const m = L.imap[k], cw = new Uint8Array(L.lens[k]);
+        for (let t = 0; t < cw.length; t++) cw[t] = buf[base + m[t]];
+        const dec = rsDecode(cw, NSYM);
+        if (!dec) continue band;
+        p.set(dec, off); off += dec.length;
+      }
+      const dv = new DataView(p.buffer), seg = dv.getUint16(0), esi = dv.getUint16(2), data = p.slice(BH, BH + L.S);
+      if (dv.getUint32(4) === symCrc(session, seg, esi, data)) out.push({ seg, esi, data });
     }
-    const sym = payload.subarray(4);
-    if (new DataView(payload.buffer).getUint32(0) !== symCrc(hdr.session, hdr.seq, sym)) return { ok: false, crc: true };
-    return { ok: true, sym };
+    return out;
   }
 
   // orientation permutations of the 4 detected corners (4 rotations × mirror)
@@ -672,20 +673,21 @@ const LD = (() => {
   for (let r = 0; r < 4; r++) ORIENTS.push([0, 1, 2, 3].map(i => (i + r) % 4));
   for (let r = 0; r < 4; r++) ORIENTS.push([0, 1, 2, 3].map(i => (r - i + 4) % 4));
 
-  class Receiver {
-    constructor() { this.lastG = 0; this.lastO = 0; this.reset(); }
-    reset() {
-      this.session = null; this.dec = null; this.hdr = null; this.seen = new Set();
-      this.stats = { frames: 0, found: 0, hdrOk: 0, dataOk: 0, dup: 0, bad: 0 };
-    }
-    process(img) {
-      this.stats.frames++;
+  // Image -> symbols. Stateless apart from tracking: once a code is locked, the next frame starts from
+  // the previous corners (a light refine instead of full detection + grid-size/orientation search).
+  class Reader {
+    constructor() { this.track = null; this.lastG = 0; this.lastO = 0; }
+    read(img) {
+      if (this.track) {
+        const { G, pc } = this.track, res = this._decode(img, refineCorners(img, pc, G, 2, 0.15), G);
+        if (res) return res;
+        this.track = null;
+      }
       const quads = detectQuads(img, 3);
       if (!quads.length) return { state: 'noquad' };
-      this.stats.found++;
       for (const q of quads) {
-        const r = this._tryQuad(img, q);
-        if (r) return r;
+        const res = this._tryQuad(img, q);
+        if (res) return res;
       }
       return { state: 'nohdr', quad: quads[0] };
     }
@@ -694,48 +696,34 @@ const LD = (() => {
       const Os = [this.lastO, ...ORIENTS.keys()].filter((o, i, a) => a.indexOf(o) === i);
       for (const G of Gs) {
         const rc = refineCorners(img, corners, G);
-        const cell = Math.hypot(rc[1][0] - rc[0][0], rc[1][1] - rc[0][1]) / G;
-        const r = Math.max(0, Math.round(cell * 0.18));
         for (const o of Os) {
-          const pc = ORIENTS[o].map(i => rc[i]);
-          const H = homography(gridSrc(G), pc);
-          if (!H) continue;
-          const hdr = readHeader(img, H, G, r);
-          if (!hdr) continue;
-          this.lastG = G; this.lastO = o;
-          return this._onHeader(img, H, hdr, pc, r);
+          const res = this._decode(img, ORIENTS[o].map(i => rc[i]), G);
+          if (res) { this.lastG = G; this.lastO = o; return res; }
         }
       }
       return null;
     }
-    _onHeader(img, H, hdr, quad, r) {
-      this.stats.hdrOk++;
-      if (this.session !== hdr.session) {
-        const L = layout(hdr.G, hdr.bpc);
-        const { frames, found } = this.stats;
-        this.reset(); Object.assign(this.stats, { frames, found, hdrOk: 1 });
-        this.session = hdr.session; this.hdr = hdr;
-        this.dec = new LTDecoder(hdr.K, L.S, hdr.session);
-      }
-      if (this.dec.done) return { state: 'done', quad, hdr };
-      if (this.seen.has(hdr.seq)) { this.stats.dup++; return { state: 'dup', quad, hdr }; }
-      const res = readData(img, H, layout(hdr.G, hdr.bpc), r, hdr);
-      if (!res.ok) { this.stats.bad++; return { state: 'bad', quad, hdr }; }
-      this.stats.dataOk++;
-      this.seen.add(hdr.seq);
-      this.dec.add(hdr.seq, res.sym);
-      return { state: this.dec.done ? 'done' : 'ok', quad, hdr };
+    _decode(img, pc, G) {
+      const H = homography(gridSrc(G), pc);
+      if (!H) return null;
+      const cell = Math.hypot(pc[1][0] - pc[0][0], pc[1][1] - pc[0][1]) / G, r = Math.max(0, Math.round(cell * 0.18));
+      const hdr = readHeader(img, H, G, r);
+      if (!hdr) return null;
+      this.track = { G, pc };
+      const L = layout(hdr.G, hdr.bpc), syms = readBands(img, H, L, r, hdr.session);
+      return { state: syms.length ? 'ok' : 'bad', quad: pc, hdr, syms, nb: L.nb };
     }
-    get progress() { return this.dec ? this.dec.known / this.dec.K : 0; }
-    output() { return this.dec && this.dec.done ? this.dec.output(this.hdr.total) : null; }
   }
 
   // stream = [u16 metaLen][meta JSON][body]
+  function packMeta(metaObj) {
+    const meta = new TextEncoder().encode(JSON.stringify(metaObj)), out = new Uint8Array(2 + meta.length);
+    out[0] = meta.length >> 8; out[1] = meta.length & 0xFF; out.set(meta, 2);
+    return out;
+  }
   function packStream(metaObj, body) {
-    const meta = new TextEncoder().encode(JSON.stringify(metaObj));
-    const out = new Uint8Array(2 + meta.length + body.length);
-    out[0] = meta.length >> 8; out[1] = meta.length & 0xFF;
-    out.set(meta, 2); out.set(body, 2 + meta.length);
+    const m = packMeta(metaObj), out = new Uint8Array(m.length + body.length);
+    out.set(m); out.set(body, m.length);
     return out;
   }
   function unpackStream(s) {
@@ -743,8 +731,8 @@ const LD = (() => {
     return { meta: JSON.parse(new TextDecoder().decode(s.subarray(2, 2 + ml))), body: s.subarray(2 + ml) };
   }
 
-  return { Sender, Receiver, LTDecoder, layout, rsEncode, rsDecode, crc32, packStream, unpackStream,
-    GRID_SIZES, QUIET, RING, homography };
+  return { Sender, Reader, Collector, SegDecoder, layout, rsEncode, rsDecode, crc32, packMeta, packStream, unpackStream,
+    GRID_SIZES, QUIET, RING, SEG_K, homography, segKey };
 })();
 </script>
 
@@ -753,109 +741,176 @@ const LD = (() => {
 "use strict";
 const $ = (id) => document.getElementById(id);
 const PALETTE = [[0,0,0],[0,0,255],[0,255,0],[0,255,255],[255,0,0],[255,0,255],[255,255,0],[255,255,255]];
-const fmtBytes = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
-const fmtTime = (s) => s < 60 ? Math.ceil(s) + '초' : s < 3600 ? Math.floor(s / 60) + '분 ' + Math.ceil(s % 60) + '초' : (s / 3600).toFixed(1) + '시간';
+const fmtBytes = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(2) + ' MB' : (n / 1073741824).toFixed(2) + ' GB';
+const fmtTime = (s) => s < 60 ? Math.ceil(s) + '초' : s < 3600 ? Math.floor(s / 60) + '분 ' + Math.ceil(s % 60) + '초' : Math.floor(s / 3600) + '시간 ' + Math.round(s % 3600 / 60) + '분';
 
 $('tabSend').onclick = () => { $('tabSend').classList.add('on'); $('tabRecv').classList.remove('on'); $('sendPane').classList.remove('hidden'); $('recvPane').classList.add('hidden'); };
 $('tabRecv').onclick = () => { $('tabRecv').classList.add('on'); $('tabSend').classList.remove('on'); $('recvPane').classList.remove('hidden'); $('sendPane').classList.add('hidden'); listCameras(); };
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
+// settings survive reloads (per-browser convenience only)
+const SETTINGS = ['grid', 'bpc', 'fps', 'rho', 'size', 'bright'];
+try { const s = JSON.parse(localStorage.getItem('lightdrop') || '{}'); SETTINGS.forEach(k => { if (s[k] != null) $(k).value = s[k]; }); } catch (e) { /* storage blocked */ }
+const saveSettings = () => { try { localStorage.setItem('lightdrop', JSON.stringify(Object.fromEntries(SETTINGS.map(k => [k, $(k).value])))); } catch (e) { /* storage blocked */ } };
+
+// "3,7-9,12-" (1-based, as the receiver displays them) -> 0-based segment list; empty -> all
+function parseSegs(s, n) {
+  const out = [];
+  for (const t of s.split(/[,\s]+/)) {
+    const m = t.match(/^(\d+)(-(\d*))?$/); if (!m) continue;
+    const a = +m[1], b = m[2] ? (m[3] ? +m[3] : n) : a;
+    for (let i = Math.max(1, a); i <= Math.min(n, b); i++) out.push(i - 1);
+  }
+  return out.length ? [...new Set(out)] : [...Array(n).keys()];
+}
+function missingRanges(done, max = 15) {
+  const r = [];
+  for (let i = 0; i < done.length; i++) if (!done[i]) {
+    let j = i; while (j + 1 < done.length && !done[j + 1]) j++;
+    r.push(j > i ? `${i + 1}-${j + 1}` : `${i + 1}`); i = j;
+  }
+  return r.length > max ? r.slice(0, max).join(',') + ',…' : r.join(',');
+}
+
 // ---------------- Sender ----------------
 let prepared = null;
 
-async function deflate(buf) {
-  const cs = new Blob([buf]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(cs).arrayBuffer());
-}
-async function inflate(buf) {
-  const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(ds).arrayBuffer());
-}
-
+// One pass over the file: CRC32 of the original, and (if it pays off) a deflated copy as a Blob,
+// which the browser keeps on disk when large. Nothing here holds the whole file in memory.
 async function prepare() {
   const f = $('file').files[0];
-  $('startTx').disabled = true;
-  if (!f) { prepared = null; return; }
-  $('sendInfo').textContent = '파일 읽는 중…';
-  const raw = new Uint8Array(await f.arrayBuffer());
-  let body = raw, z = 0;
-  if ($('compress').checked && 'CompressionStream' in window) {
-    const c = await deflate(raw);
-    if (c.length < raw.length * 0.97) { body = c; z = 1; }
+  $('startTx').disabled = true; prepared = null;
+  if (!f) return;
+  const info = $('sendInfo'), tick = (what, done) => info.textContent = `${what} ${(done / Math.max(1, f.size) * 100).toFixed(0)}%`;
+  let tryZ = $('compress').checked && 'CompressionStream' in window;
+  if (tryZ) {   // judge compressibility on the first 1 MB
+    const head = await new Response(f.slice(0, 1 << 20).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+    tryZ = head.byteLength < Math.min(f.size, 1 << 20) * 0.9;
   }
-  const stream = LD.packStream({ n: f.name, t: f.type, s: raw.length, c: LD.crc32(raw), z }, body);
-  prepared = { name: f.name, raw: raw.length, z, stream };
+  let crc = 0, done = 0, zw = null, zblob = null;
+  if (tryZ) { const cs = new CompressionStream('deflate-raw'); zw = cs.writable.getWriter(); zblob = new Response(cs.readable).blob(); }
+  const rd = f.stream().getReader();
+  for (;;) {
+    const { done: end, value } = await rd.read();
+    if (end) break;
+    crc = LD.crc32(value, crc); done += value.length;
+    if (zw) await zw.write(value);
+    tick(tryZ ? '확인·압축 중' : '확인 중', done);
+  }
+  let body = f, z = 0;
+  if (zw) { await zw.close(); const zb = await zblob; if (zb.size < f.size * 0.97) { body = zb; z = 1; } }
+  const meta = LD.packMeta({ n: f.name, t: f.type, s: f.size, c: crc, z });
+  prepared = { name: f.name, raw: f.size, z, blob: new Blob([meta, body]), id: `${f.name}|${f.size}|${f.lastModified}|${crc}|${z}` };
   updateEstimate();
   $('startTx').disabled = false;
 }
 function updateEstimate() {
+  $('sizeV').textContent = $('size').value + '%'; $('brightV').textContent = $('bright').value + '%';
+  saveSettings();
   if (!prepared) return;
-  const L = LD.layout(+$('grid').value, +$('bpc').value), fps = +$('fps').value;
-  const K = Math.ceil(prepared.stream.length / L.S);
-  const rate = L.S * fps * 0.7;   // assume ~70% of frames read cleanly
+  const L = LD.layout(+$('grid').value, +$('bpc').value), fps = +$('fps').value, rho = +$('rho').value, total = prepared.blob.size;
+  const K = Math.max(1, Math.ceil(total / L.S)), segK = Math.min(LD.SEG_K, K), nseg = Math.ceil(K / segK);
+  let syms = 0; for (let j = 0; j < nseg; j++) { const k = Math.min(segK, K - j * segK); syms += k + Math.ceil(k * rho) + 1; }
+  const secs = syms / L.nb / fps;
   $('sendInfo').textContent =
-    `${prepared.name} · 원본 ${fmtBytes(prepared.raw)}${prepared.z ? ' → 압축 ' + fmtBytes(prepared.stream.length) : ''}\n` +
-    `프레임당 ${fmtBytes(L.S)} · ${K}개 블록\n` +
-    `예상 속도 약 ${fmtBytes(rate)}/s · 예상 시간 약 ${fmtTime(K * 1.1 / (fps * 0.7))} (인식률 70% 가정)`;
+    `${prepared.name} · 원본 ${fmtBytes(prepared.raw)}${prepared.z ? ' → 압축 ' + fmtBytes(total) : ''}\n` +
+    `프레임당 ${fmtBytes(L.S * L.nb)} (${L.nb}개 띠) · ${K}개 블록 · ${nseg}개 구간\n` +
+    `최대 속도 ${fmtBytes(L.S * L.nb * fps)}/s · 1차 전송(보강 ${Math.round(rho * 100)}% 포함) 약 ${fmtTime(secs)}` +
+    (secs > 3600 ? '\n오래 걸리는 전송입니다. 두 기기를 고정하고 화면 꺼짐/절전을 끄세요. 받는 쪽은 중간에 끊겨도 이어받기가 됩니다.' : '');
 }
 $('file').onchange = prepare;
 $('compress').onchange = prepare;
-['grid', 'bpc', 'fps'].forEach(id => $(id).onchange = updateEstimate);
+['grid', 'bpc', 'fps', 'rho', 'size', 'bright'].forEach(id => $(id).oninput = updateEstimate);
+updateEstimate();
 
 let tx = null;
 function startTx() {
   if (!prepared) return;
-  const G = +$('grid').value, bpc = +$('bpc').value;
-  const session = crypto.getRandomValues(new Uint32Array(1))[0];
-  const sender = new LD.Sender(prepared.stream, G, bpc, session);
-  const N = G + 2 * LD.QUIET;
+  const G = +$('grid').value, bpc = +$('bpc').value, blob = prepared.blob;
+  // same file + same settings -> same session, so an interrupted receiver can resume
+  const session = LD.crc32(new TextEncoder().encode(`${prepared.id}|${G}|${bpc}|${LD.SEG_K}`));
+  // segments are read lazily from the Blob and cached (a few MB at most)
+  const cache = new Map();
+  const src = (j) => {
+    const v = cache.get(j);
+    if (v instanceof Uint8Array) { cache.delete(j); cache.set(j, v); return v; }
+    if (!v) load(j);
+    return null;
+  };
+  const load = (j) => {
+    if (j >= sender.nseg || cache.has(j)) return;
+    const [a, b] = sender.segRange(j);
+    cache.set(j, 'loading');
+    blob.slice(a, b).arrayBuffer().then(ab => {
+      const o = new Uint8Array(b - a); o.set(new Uint8Array(ab)); cache.set(j, o);
+      for (const k of cache.keys()) if (cache.size > 6 && k !== j) cache.delete(k);
+    }).catch(() => cache.delete(j));
+  };
+  const sender = new LD.Sender(blob.size, G, bpc, session, src);
+  sender.rho = +$('rho').value;
+  const N = G + 2 * LD.QUIET, nb = sender.L.nb;
   const small = document.createElement('canvas'); small.width = small.height = N;
   const sctx = small.getContext('2d'), id = sctx.createImageData(N, N);
   const cv = $('txCanvas'), ctx = cv.getContext('2d');
-  $('tx').classList.remove('hidden');
+  $('tx').classList.remove('hidden'); $('txSegs').value = '';
   const el = document.documentElement;
   if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   let wake = null;
-  if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => wake = w).catch(() => {});
+  const lock = () => { if (navigator.wakeLock && document.visibilityState === 'visible') navigator.wakeLock.request('screen').then(w => wake = w).catch(() => {}); };
+  lock(); document.addEventListener('visibilitychange', lock);
 
   const layoutCanvas = () => {
     const dpr = window.devicePixelRatio || 1;
-    const avail = Math.min(innerWidth, innerHeight - 24) * dpr;
-    const cell = Math.max(1, Math.floor(avail / N));
+    const avail = Math.min(innerWidth, innerHeight - 32) * dpr * tx.size / 100;
+    const cell = Math.max(2, Math.floor(avail / N));
     cv.width = cv.height = cell * N;
     cv.style.width = cv.style.height = (cell * N / dpr) + 'px';
+    if (tx.cur) paint(tx.cur);
   };
-  layoutCanvas();
-  window.addEventListener('resize', layoutCanvas);
-
   const paint = (grid) => {
-    const d = id.data; d.fill(255);
+    const d = id.data, k = tx.bright / 100, pal = PALETTE.map(c => c.map(v => Math.round(v * k)));
+    for (let i = 0; i < N * N; i++) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = pal[7][0]; d[i * 4 + 3] = 255; }
     for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) {
-      const p = ((r + LD.QUIET) * N + c + LD.QUIET) * 4, col = PALETTE[grid[r * G + c]];
+      const p = ((r + LD.QUIET) * N + c + LD.QUIET) * 4, col = pal[grid[r * G + c]];
       d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2];
     }
     sctx.putImageData(id, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(small, 0, 0, cv.width, cv.height);
   };
+  // the next frame is built ahead of time; if its segment is still loading we simply try again next tick
+  const build = () => {
+    while (tx.items.length < nb) tx.items.push(tx.sched.next().value);
+    const g = sender.frame(tx.items);
+    if (!g) return;
+    const last = tx.items[nb - 1];
+    load(last[0] + 1);
+    tx.status = `구간 ${last[0] + 1}/${sender.nseg} · ${last[1] < sender.segLen(last[0]) ? '원본' : '보강'}`;
+    tx.items = []; tx.next = g;
+  };
+  const restart = (segs, repairOnly) => { tx.segs = segs; tx.sched = sender.schedule(segs, repairOnly); tx.items = []; tx.next = null; build(); };
 
-  tx = { sender, seq: 0, fps: +$('fps').value, paused: false, last: 0, next: sender.frame(0), raf: 0 };
+  tx = { sender, fps: +$('fps').value, size: +$('size').value, bright: +$('bright').value, paused: false, last: 0, raf: 0, n: 0, layoutCanvas };
+  restart(parseSegs('', sender.nseg), false);
+  layoutCanvas();
+  window.addEventListener('resize', layoutCanvas);
   const loop = (t) => {
     if (!tx) return;
     tx.raf = requestAnimationFrame(loop);
-    if (tx.paused || t - tx.last < 1000 / tx.fps - 2) return;
-    tx.last = t;
-    paint(tx.next);
-    const cur = tx.seq++;
-    const pass = cur < sender.K ? `1차 ${cur + 1}/${sender.K}` : `보강 #${cur - sender.K + 1}`;
-    $('txStatus').textContent = `${pass} · ${tx.fps}fps · ${G}×${G} ${bpc}bit · 받는 쪽 진행률이 100%가 되면 Esc`;
-    tx.next = sender.frame(tx.seq);
+    if (!tx.next) build();
+    if (tx.paused || !tx.next || t - tx.last < 1000 / tx.fps - 4) return;
+    tx.last = t; tx.n++;
+    paint(tx.cur = tx.next); tx.next = null;
+    $('txStatus').textContent = `${tx.status} · ${tx.fps}fps · ${G}×${G} ${bpc}bit · 프레임 ${tx.n} · 받는 쪽이 100%가 되면 Esc`;
+    build();
   };
   tx.raf = requestAnimationFrame(loop);
+  tx.restart = restart;
   tx.stop = () => {
     cancelAnimationFrame(tx.raf); tx = null;
     window.removeEventListener('resize', layoutCanvas);
+    document.removeEventListener('visibilitychange', lock);
     if (wake) wake.release().catch(() => {});
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     $('tx').classList.add('hidden');
@@ -863,18 +918,68 @@ function startTx() {
 }
 $('startTx').onclick = startTx;
 $('txStop').onclick = () => tx && tx.stop();
+// receiver-reported missing segments: send fresh repair symbols for just those
+$('txSegs').onchange = () => { if (tx) { tx.restart(parseSegs($('txSegs').value, tx.sender.nseg), true); $('txSegs').blur(); } };
 document.addEventListener('keydown', (e) => {
-  if (!tx) return;
-  const steps = [2, 3, 4, 6, 8, 10, 12, 15, 20, 24, 30];
-  if (e.key === 'Escape') tx.stop();
-  else if (e.key === 'r' || e.key === 'R') { tx.seq = 0; tx.next = tx.sender.frame(0); }
-  else if (e.key === ' ') { tx.paused = !tx.paused; e.preventDefault(); }
-  else if (e.key === 'ArrowUp') tx.fps = steps.find(s => s > tx.fps) || tx.fps;
-  else if (e.key === 'ArrowDown') tx.fps = [...steps].reverse().find(s => s < tx.fps) || tx.fps;
+  if (!tx || e.target === $('txSegs')) return;
+  const steps = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 30], k = e.key;
+  if (k === 'Escape') tx.stop();
+  else if (k === 'r' || k === 'R') tx.restart(tx.segs, false);
+  else if (k === ' ') { tx.paused = !tx.paused; e.preventDefault(); }
+  else if (k === 'ArrowUp') tx.fps = steps.find(s => s > tx.fps) || tx.fps;
+  else if (k === 'ArrowDown') tx.fps = [...steps].reverse().find(s => s < tx.fps) || tx.fps;
+  else if (k === '+' || k === '=' || k === '-') { tx.size = Math.max(10, Math.min(100, tx.size + (k === '-' ? -5 : 5))); tx.layoutCanvas(); }
+  else if (k === '[' || k === ']') { tx.bright = Math.max(15, Math.min(100, tx.bright + (k === '[' ? -10 : 10))); if (tx.cur) tx.layoutCanvas(); }
 });
 
+// ---------------- Resume storage (IndexedDB; optional) ----------------
+// Finished segments are kept as Blobs keyed by [session, segment], so a receiver that is interrupted
+// (tab closed, battery, camera moved) picks up where it left off when the same transfer is shown again.
+let dbp = null;
+const db = () => dbp || (dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('lightdrop', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('segs');
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+}));
+async function store(mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const t = d.transaction('segs', mode), out = fn(t.objectStore('segs'));
+    t.oncomplete = () => res(out); t.onerror = () => rej(t.error);
+  });
+}
+const sessRange = (s) => IDBKeyRange.bound([s, 0], [s, 1e9]);
+const storePut = (s, j, blob) => store('readwrite', st => st.put(blob, [s, j])).catch(() => {});
+const storeDrop = (s) => store('readwrite', st => st.delete(sessRange(s))).catch(() => {});
+const storeLoad = (s) => store('readonly', st => ({ k: st.getAllKeys(sessRange(s)), v: st.getAll(sessRange(s)) }))
+  .then(r => r.k.result.map((k, i) => [k[1], r.v.result[i]])).catch(() => []);
+$('wipe').onclick = () => { dbp = null; try { indexedDB.deleteDatabase('lightdrop'); } catch (e) { /* unavailable */ } $('camMsg').textContent = '보관 데이터를 지웠습니다.'; };
+
 // ---------------- Receiver ----------------
-let rx = null;
+// Camera frames are decoded (image -> symbols) by a pool of workers; the fountain decoding stays here.
+let rx = null, col = null;
+const WORKER_GLUE = `
+let reader = new LD.Reader(), cv = null, cx = null;
+onmessage = (e) => {
+  const bm = e.data;
+  if (!cv || cv.width !== bm.width || cv.height !== bm.height) { cv = new OffscreenCanvas(bm.width, bm.height); cx = cv.getContext('2d', { willReadFrequently: true }); }
+  cx.drawImage(bm, 0, 0); bm.close();
+  const r = reader.read(cx.getImageData(0, 0, cv.width, cv.height));
+  postMessage(r, (r.syms || []).map(s => s.data.buffer));
+};`;
+function makeWorkers(onResult, onFail) {
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || !window.createImageBitmap) return [];
+  try {
+    const url = URL.createObjectURL(new Blob([$('ld-core').textContent + WORKER_GLUE], { type: 'text/javascript' }));
+    const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
+    return Array.from({ length: n }, () => {
+      const p = { w: new Worker(url), busy: false };
+      p.w.onmessage = (e) => { p.busy = false; onResult(e.data); };
+      p.w.onerror = (e) => { e.preventDefault(); onFail(); };
+      return p;
+    });
+  } catch (e) { return []; }
+}
 
 async function listCameras() {
   try {
@@ -883,6 +988,15 @@ async function listCameras() {
     sel.innerHTML = '<option value="">기본 (후면)</option>' + devs.map((d, i) => `<option value="${d.deviceId}">${d.label || '카메라 ' + (i + 1)}</option>`).join('');
     sel.value = cur;
   } catch (e) { /* listing is optional */ }
+}
+
+function ensureCollector(hdr) {
+  if (col && col.hdr.session === hdr.session) return;
+  col = new LD.Collector(hdr);
+  const c = col, s = hdr.session;
+  c.onSeg = (j, bytes) => { const b = new Blob([bytes]); storePut(s, j, b); return b; };
+  rx.stats.useful = rx.stats.dup = 0; rx.okTimes = [];
+  storeLoad(s).then(list => { if (col === c) { list.forEach(([j, b]) => c.restore(j, b)); if (list.length) rx.resumed = list.length; checkDone(); } });
 }
 
 async function startRx() {
@@ -903,64 +1017,86 @@ async function startRx() {
 
   const video = $('video'); video.srcObject = stream; await video.play();
   const w = video.videoWidth, h = video.videoHeight;
-  const work = document.createElement('canvas'); work.width = w; work.height = h;
-  const wctx = work.getContext('2d', { willReadFrequently: true });
   const ov = $('overlay'), octx = ov.getContext('2d'); ov.width = w; ov.height = h;
   $('rxCard').classList.remove('hidden'); $('result').classList.add('hidden');
   $('startRx').classList.add('hidden'); $('stopRx').classList.remove('hidden');
-  $('camMsg').textContent = `카메라 ${w}×${h}`;
 
-  rx = { stream, receiver: new LD.Receiver(), running: true, t0: 0, okTimes: [] };
-  const R = rx.receiver;
+  rx = { stream, running: true, okTimes: [], last: null, shown: 0, resumed: 0,
+    stats: { frames: 0, found: 0, hdr: 0, bands: 0, bandsOk: 0, useful: 0, dup: 0 } };
+  const onResult = (res) => {
+    if (!rx || !rx.running) return;
+    const s = rx.stats; s.frames++;
+    if (res.state !== 'noquad') s.found++;
+    if (res.hdr) {
+      s.hdr++; s.bands += res.nb; s.bandsOk += res.syms.length;
+      ensureCollector(res.hdr);
+      const now = performance.now();
+      for (const y of res.syms) { if (col.add(y.seg, y.esi, y.data)) { s.useful++; rx.okTimes.push(now); } else s.dup++; }
+    }
+    rx.last = res;
+    const now = performance.now();
+    if (now - rx.shown > 100) { rx.shown = now; drawOverlay(octx, w, h, res); drawStats(); }
+    checkDone();
+  };
+  // main-thread fallback when workers / OffscreenCanvas aren't available
+  let work = null, wctx = null;
+  const mainRead = () => {
+    if (!work) { work = document.createElement('canvas'); work.width = w; work.height = h; wctx = work.getContext('2d', { willReadFrequently: true }); rx.reader = new LD.Reader(); }
+    wctx.drawImage(video, 0, 0, w, h);
+    onResult(rx.reader.read(wctx.getImageData(0, 0, w, h)));
+  };
+  let pool = makeWorkers(onResult, () => { pool.forEach(p => p.w.terminate()); pool = []; });
+  rx.pool = () => pool;
+  $('camMsg').textContent = `카메라 ${w}×${h} · ${pool.length ? '분석 스레드 ' + pool.length + '개' : '단일 스레드'}`;
   const step = () => {
     if (!rx || !rx.running) return;
-    wctx.drawImage(video, 0, 0, w, h);
-    const res = R.process(wctx.getImageData(0, 0, w, h));
-    if (res.state === 'ok') { rx.okTimes.push(performance.now()); if (!rx.t0) rx.t0 = performance.now(); }
-    drawOverlay(octx, w, h, res);
-    drawStats(R, res);
-    if (res.state === 'done') { finishRx(); return; }
+    if (!pool.length) mainRead();
+    else {
+      const p = pool.find(p => !p.busy);
+      if (p) { p.busy = true; createImageBitmap(video).then(bm => p.w.postMessage(bm, [bm])).catch(() => { p.busy = false; }); }
+    }
     schedule();
   };
   const schedule = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(step) : requestAnimationFrame(step);
   schedule();
 }
 
+function checkDone() { if (rx && rx.running && col && col.complete) finishRx(); }
+
 function drawOverlay(ctx, w, h, res) {
   ctx.clearRect(0, 0, w, h);
   if (!res.quad) return;
-  const color = { ok: '#1f9d55', done: '#1f9d55', dup: '#2a6df4', bad: '#e0a100', nohdr: '#d64545' }[res.state] || '#d64545';
+  const color = { ok: '#1f9d55', bad: '#e0a100', nohdr: '#d64545' }[res.state] || '#d64545';
   ctx.strokeStyle = color; ctx.lineWidth = Math.max(3, w / 300);
   ctx.beginPath(); res.quad.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
 }
 
-function drawStats(R, res) {
-  const s = R.stats, d = R.dec;
-  $('prog').style.width = (R.progress * 100).toFixed(1) + '%';
-  let rate = '';
-  if (d && rx.t0) {
-    const now = performance.now(), recent = rx.okTimes.filter(t => now - t < 5000);
-    rx.okTimes = recent;
-    const bps = recent.length / 5 * LD.layout(R.hdr.G, R.hdr.bpc).S;
-    const remain = (d.K - d.known) * LD.layout(R.hdr.G, R.hdr.bpc).S * 1.1;
-    rate = `\n속도 ${fmtBytes(bps)}/s` + (bps > 0 ? ` · 남은 시간 약 ${fmtTime(remain / bps)}` : '');
-  }
+function drawStats() {
+  const s = rx.stats, res = rx.last || {};
+  $('prog').style.width = (col ? col.progress * 100 : 0).toFixed(1) + '%';
   const label = { noquad: '코드를 찾는 중 (코드 전체 + 흰 여백이 화면에 들어오게)', nohdr: '코드는 보이지만 읽기 실패 (초점/흔들림/반사 확인)',
-    bad: '프레임 손상 (전환 중 촬영 등, 정상)', dup: '이미 받은 프레임', ok: '수신 중', done: '완료' }[res.state];
-  $('rxStats').textContent =
-    `${label}\n` +
-    (d ? `블록 ${d.known}/${d.K} (${(R.progress * 100).toFixed(1)}%) · ${R.hdr.G}×${R.hdr.G} ${R.hdr.bpc}bit\n` : '') +
-    `처리 ${s.frames} · 인식 ${s.found} · 헤더 ${s.hdrOk} · 성공 ${s.dataOk} · 중복 ${s.dup} · 손상 ${s.bad}` + rate;
-  if (d) drawBlockMap(d);
+    bad: '프레임 손상 (전환 중 촬영 등, 가끔은 정상)', ok: '수신 중' }[res.state] || '';
+  let txt = label + '\n';
+  if (col) {
+    const now = performance.now();
+    rx.okTimes = rx.okTimes.filter(t => now - t < 5000);
+    const bps = rx.okTimes.length / 5 * col.S, remain = (col.K - col.known) * col.S;
+    txt += `${fmtBytes(Math.min(col.known * col.S, col.hdr.total))} / ${fmtBytes(col.hdr.total)} (${(col.progress * 100).toFixed(1)}%) · ${col.hdr.G}×${col.hdr.G} ${col.hdr.bpc}bit\n` +
+      `속도 ${fmtBytes(bps)}/s` + (bps > 0 ? ` · 남은 시간 약 ${fmtTime(remain / bps)}` : '') + '\n' +
+      (col.nseg > 1 ? `구간 ${col.ndone}/${col.nseg} 완료` + (rx.resumed ? ` (이어받기 ${rx.resumed})` : '') + ` · 빠진 구간: ${missingRanges(col.done)}\n` : '');
+    drawSegMap();
+  }
+  txt += `처리 ${s.frames} · 인식 ${s.found} · 헤더 ${s.hdr} · 띠 ${s.bandsOk}/${s.bands} · 새 블록 ${s.useful} · 중복 ${s.dup}`;
+  $('rxStats').textContent = txt;
 }
 
-function drawBlockMap(d) {
-  const cv = $('blockMap'), cols = Math.min(d.K, 400), rows = Math.ceil(d.K / cols);
+function drawSegMap() {
+  const cv = $('segMap'), n = col.nseg, cols = Math.min(n, 400), rows = Math.ceil(n / cols);
   if (cv.width !== cols || cv.height !== rows) { cv.width = cols; cv.height = rows; }
   const ctx = cv.getContext('2d'), img = ctx.createImageData(cols, rows);
   for (let i = 0; i < cols * rows; i++) {
-    const p = i * 4, has = i < d.K && d.blocks[i];
-    img.data[p] = has ? 31 : 200; img.data[p + 1] = has ? 157 : 200; img.data[p + 2] = has ? 85 : 200; img.data[p + 3] = i < d.K ? 255 : 0;
+    const p = i * 4, f = i < n ? col.segProgress(i) : 0, full = f === 1;
+    img.data[p] = full ? 31 : 200 - 120 * f; img.data[p + 1] = full ? 157 : 200 - 40 * f; img.data[p + 2] = full ? 85 : 200; img.data[p + 3] = i < n ? 255 : 0;
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -968,32 +1104,41 @@ function drawBlockMap(d) {
 function stopRx() {
   if (!rx) return;
   rx.running = false;
+  rx.pool().forEach(p => p.w.terminate());
   rx.stream.getTracks().forEach(t => t.stop());
   $('startRx').classList.remove('hidden'); $('stopRx').classList.add('hidden');
 }
 
+// Assembles the finished segments (Blobs), inflates if needed and verifies the CRC, all streamed.
 async function finishRx() {
-  const out = rx.receiver.output();
-  stopRx();
-  const box = $('result'); box.classList.remove('hidden');
+  const c = col;
+  stopRx(); drawStats();
+  const box = $('result'); box.classList.remove('hidden'); box.textContent = '파일 복원 중…';
   try {
-    const { meta, body } = LD.unpackStream(out);
-    const data = meta.z ? await inflate(body) : body;
-    const good = data.length === meta.s && LD.crc32(data) === meta.c;
-    const blob = new Blob([data], { type: meta.t || 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
+    const all = new Blob(c.parts).slice(0, c.hdr.total);
+    const head = new Uint8Array(await all.slice(0, 2).arrayBuffer()), ml = (head[0] << 8) | head[1];
+    const meta = JSON.parse(new TextDecoder().decode(await all.slice(2, 2 + ml).arrayBuffer()));
+    let crc = 0, n = 0;
+    const check = new TransformStream({ transform(ch, ctl) { crc = LD.crc32(ch, crc); n += ch.length; ctl.enqueue(ch); } });
+    let s = all.slice(2 + ml).stream();
+    if (meta.z) s = s.pipeThrough(new DecompressionStream('deflate-raw'));
+    const data = await new Response(s.pipeThrough(check), { headers: { 'content-type': meta.t || 'application/octet-stream' } }).blob();
+    const good = n === meta.s && crc === meta.c;
+    if (good) storeDrop(c.hdr.session);
+    const url = URL.createObjectURL(data);
     box.innerHTML = '';
     const h = document.createElement('div');
     h.innerHTML = `<b>${good ? '✅ 수신 완료 · 무결성 검증 통과' : '⚠️ 수신은 끝났지만 검증 실패'}</b><div class="info"></div>`;
-    h.querySelector('.info').textContent = `${meta.n} · ${fmtBytes(data.length)}`;
+    h.querySelector('.info').textContent = `${meta.n} · ${fmtBytes(n)}`;
     box.appendChild(h);
     const a = document.createElement('a'); a.className = 'btn'; a.href = url; a.download = meta.n; a.textContent = '파일 저장';
     a.style.marginTop = '10px'; box.appendChild(a);
     if (/^image\//.test(meta.t)) { const im = document.createElement('img'); im.src = url; box.appendChild(im); }
-    else if (/^video\//.test(meta.t)) { const v = document.createElement('video'); v.src = url; v.controls = true; box.appendChild(v); }
+    else if (/^video\//.test(meta.t) && n < 2e8) { const v = document.createElement('video'); v.src = url; v.controls = true; box.appendChild(v); }
   } catch (e) {
     box.textContent = '복원 중 오류: ' + e.message;
   }
+  col = null;
 }
 
 $('startRx').onclick = startRx;

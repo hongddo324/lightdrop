@@ -1,5 +1,8 @@
 // Camera-channel simulator for LightDrop.
-// Usage: node test/sim.js [G] [bpc] [fileKB] [cellPx]
+// Models real timing: a 60 Hz display showing the code at `fps`, scanned out top to bottom, filmed by a 30 fps
+// rolling-shutter camera (so captures straddling a frame change are torn / blended), plus a slowly drifting
+// hand-held pose, perspective, blur, colour crosstalk, vignetting, noise and occasional big shakes.
+// Usage: [BRIGHT=0.5] node test/sim.js [G] [bpc] [fileKB] [cellPx] [fps]
 "use strict";
 const fs = require('fs'), path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'lightdrop.html'), 'utf8');
@@ -23,36 +26,51 @@ const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.
   console.log(`RS self-test: ${ok}/300 corrected (<=16 errors each)`);
 }
 
-const G = +(process.argv[2] || 96), bpc = +(process.argv[3] || 3), KB = +(process.argv[4] || 60), cellPx = +(process.argv[5] || 6);
-const W = 1280, H = 720;
-const PAL = [[0,0,0],[0,0,255],[0,255,0],[0,255,255],[255,0,0],[255,0,255],[255,255,0],[255,255,255]];
+const G = +(process.argv[2] || 128), bpc = +(process.argv[3] || 3), KB = +(process.argv[4] || 100), cellPx = +(process.argv[5] || 5), FPS = +(process.argv[6] || 15);
+const W = 1280, H = 720, CAM = 30, TV = 1 / 60, ROLL = 0.022, EXPO = 0.008;
+const BRIGHT = +(process.env.BRIGHT || 1);              // sender's brightness setting (camera exposure is not modelled)
+const PAL = [[0,0,0],[0,0,255],[0,255,0],[0,255,255],[255,0,0],[255,0,255],[255,255,0],[255,255,255]].map(c => c.map(v => v * BRIGHT));
 
 const file = new Uint8Array(KB * 1024).map(() => rnd() * 256);
 const stream = LD.packStream({ n: 'test.bin', t: '', s: file.length, c: LD.crc32(file), z: 0 }, file);
-const sender = new LD.Sender(stream, G, bpc, 0xC0FFEE);
-const N = G + 2 * LD.QUIET;
+const sender = new LD.Sender(stream.length, G, bpc, 0xC0FFEE, stream);
+const N = G + 2 * LD.QUIET, nb = sender.L.nb, sched = sender.schedule([...Array(sender.nseg).keys()]);
+const grids = [];
+const gridAt = (k) => { while (grids.length <= k) grids.push(sender.frame(Array.from({ length: nb }, () => sched.next().value))); return grids[k]; };
+const m = Math.round(60 / FPS);                          // vsyncs per code frame (rAF stepping)
+const shown = (t, s) => Math.max(0, Math.floor((t - s * TV) / (m * TV)));   // code frame index visible at time t, screen row s
 
-function render(grids, dst, mix) {
-  // dst: 4 corners in camera px of the full code canvas (incl. quiet zone)
+function render(t0, dst) {
   const Hm = LD.homography(dst, [[0, 0], [N, 0], [N, N], [0, N]]);   // camera -> code cells
   const img = new Float32Array(W * H * 3);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    let acc = [0, 0, 0];
-    for (const [sx, sy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
-      const X = x + sx, Y = y + sy, w = Hm[6] * X + Hm[7] * Y + 1;
-      const u = (Hm[0] * X + Hm[1] * Y + Hm[2]) / w, v = (Hm[3] * X + Hm[4] * Y + Hm[5]) / w;
-      let c;
-      if (u < -2 || v < -2 || u >= N + 2 || v >= N + 2) c = [40, 40, 45];           // monitor bezel
-      else if (u < 0 || v < 0 || u >= N || v >= N) c = [255, 255, 255];
-      else {
-        const gc = Math.floor(u) - LD.QUIET, gr = Math.floor(v) - LD.QUIET;
-        // torn frame: lower part shows the next frame (display refresh mid-capture)
-        const g = (mix !== null && v > mix) ? grids[1] : grids[0];
-        c = (gc < 0 || gr < 0 || gc >= G || gr >= G) ? PAL[7] : PAL[g[gr * G + gc]];
+  for (let y = 0; y < H; y++) {
+    const t = t0 + (y / H) * ROLL;
+    for (let x = 0; x < W; x++) {
+      const acc = [0, 0, 0];
+      for (const [sx, sy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
+        const X = x + sx, Y = y + sy, w = Hm[6] * X + Hm[7] * Y + 1;
+        const u = (Hm[0] * X + Hm[1] * Y + Hm[2]) / w, v = (Hm[3] * X + Hm[4] * Y + Hm[5]) / w;
+        let c;
+        if (u < -2 || v < -2 || u >= N + 2 || v >= N + 2) c = [12, 12, 14];             // dark surroundings
+        else if (u < 0 || v < 0 || u >= N || v >= N) c = PAL[7];
+        else {
+          const gc = Math.floor(u) - LD.QUIET, gr = Math.floor(v) - LD.QUIET;
+          if (gc < 0 || gr < 0 || gc >= G || gr >= G) c = PAL[7];
+          else {
+            // exposure window [t, t+EXPO] may straddle the scan-out of the next code frame at this screen row
+            const s = 0.25 + 0.5 * v / N, k1 = shown(t, s), k2 = shown(t + EXPO, s);
+            const c1 = PAL[gridAt(k1)[gr * G + gc]];
+            if (k1 === k2) c = c1;
+            else {
+              const f = Math.min(1, Math.max(0, (t + EXPO - (k2 * m * TV + s * TV)) / EXPO)), c2 = PAL[gridAt(k2)[gr * G + gc]];
+              c = [c1[0] * (1 - f) + c2[0] * f, c1[1] * (1 - f) + c2[1] * f, c1[2] * (1 - f) + c2[2] * f];
+            }
+          }
+        }
+        acc[0] += c[0] / 4; acc[1] += c[1] / 4; acc[2] += c[2] / 4;
       }
-      acc[0] += c[0] / 4; acc[1] += c[1] / 4; acc[2] += c[2] / 4;
+      img.set(acc, (y * W + x) * 3);
     }
-    img.set(acc, (y * W + x) * 3);
   }
   // blur 3x3, crosstalk, black level/gain, vignetting, noise
   const out = new Uint8ClampedArray(W * H * 4);
@@ -73,34 +91,39 @@ function render(grids, dst, mix) {
   return { width: W, height: H, data: out };
 }
 
-const rx = new LD.Receiver();
+const reader = new LD.Reader();
+let col = null;
 const size = N * cellPx;
-let seq = 0, frames = 0, procMs = 0, procN = 0;
-const t0 = Date.now();
-console.log(`G=${G} bpc=${bpc} file=${KB}KB K=${sender.K} S=${sender.S}B/frame code=${size}px`);
-while (frames < 3000) {
-  frames++;
-  // camera pose wobbles: perspective + rotation + offset
-  const cx = W / 2 + (rnd() - 0.5) * 60, cy = H / 2 + (rnd() - 0.5) * 30, a = (rnd() - 0.5) * 0.25 + (frames % 50 < 5 ? 0.5 : 0), h = size / 2;
-  const persp = (rnd() - 0.5) * 0.12;
+let procMs = 0, procN = 0, bands = 0, bandsOk = 0, useful = 0, dup = 0, frames = 0;
+let px = 0, py = 0, pa = 0, pp = 0;                      // hand-held pose: slow random walk
+const t0 = Date.now(), phase = rnd() / CAM;
+console.log(`G=${G} bpc=${bpc} file=${KB}KB fps=${FPS} K=${sender.K} segs=${sender.nseg} bands=${nb}x${sender.S}B = ${nb * sender.S}B/frame, code=${size}px`);
+while (frames < 4000) {
+  const t = phase + frames++ / CAM;
+  px = px * 0.95 + gauss() * 1.5; py = py * 0.95 + gauss() * 1.5; pa = pa * 0.95 + gauss() * 0.004; pp = pp * 0.95 + gauss() * 0.003;
+  const shake = frames % 90 < 3;                         // a big jolt every 3 s
+  if (rnd() < 0.05) continue;                            // receiver was busy / dropped this camera frame
+  const cx = W / 2 + px + (shake ? 25 : 0), cy = H / 2 + py, a = 0.1 + pa + (shake ? 0.05 : 0), h = size / 2;
   const dst = [[-h, -h], [h, -h], [h, h], [-h, h]].map(([x, y], i) => {
-    const sc = 1 + (i === 1 || i === 2 ? persp : -persp);
+    const sc = 1 + (i === 1 || i === 2 ? 0.04 + pp : -0.04 - pp);
     return [cx + (x * Math.cos(a) - y * Math.sin(a)) * sc, cy + (x * Math.sin(a) + y * Math.cos(a)) * sc];
   });
-  const drop = rnd() < 0.15;                       // camera missed this displayed frame entirely
-  const torn = rnd() < 0.2 ? rnd() * N : null;     // captured during a screen refresh
-  const g0 = sender.frame(seq), g1 = sender.frame(seq + 1);
-  seq++;
-  if (drop) continue;
-  const im = render([g0, g1], dst, torn), tp = Date.now();
-  const res = rx.process(im); procMs += Date.now() - tp; procN++;
-  if (frames % 20 === 0 || res.state === 'done')
-    console.log(`frame ${frames} seq ${seq} state=${res.state} progress=${(rx.progress * 100).toFixed(1)}%`, JSON.stringify(rx.stats));
-  if (res.state === 'done') break;
+  const im = render(t, dst), tp = process.hrtime.bigint();
+  const res = reader.read(im);
+  if (res.hdr) {
+    if (!col) col = new LD.Collector(res.hdr);
+    bands += res.nb; bandsOk += res.syms.length;
+    for (const s of res.syms) col.add(s.seg, s.esi, s.data) ? useful++ : dup++;
+  }
+  procMs += Number(process.hrtime.bigint() - tp) / 1e6; procN++;
+  if (frames % 30 === 0 || (col && col.complete))
+    console.log(`t=${t.toFixed(1)}s cam ${frames} code#${shown(t, 0.5)} ${res.state} progress=${col ? (col.progress * 100).toFixed(1) : 0}% bands ${bandsOk}/${bands} useful ${useful} dup ${dup}`);
+  if (col && col.complete) break;
 }
-const out = rx.output();
-if (!out) { console.log('FAILED: not complete'); process.exit(1); }
-const { meta, body } = LD.unpackStream(out);
+if (!col || !col.complete) { console.log('FAILED: not complete'); process.exit(1); }
+const { meta, body } = LD.unpackStream(col.output());
 const ok = body.length === meta.s && LD.crc32(body) === meta.c && Buffer.compare(Buffer.from(body), Buffer.from(file)) === 0;
-console.log(JSON.stringify(rx.stats), `receiver ${(procMs / procN).toFixed(1)} ms/frame`);
-console.log(`${ok ? 'SUCCESS' : 'MISMATCH'}: displayed ${seq} frames for K=${sender.K} (overhead ${(seq / sender.K).toFixed(2)}x), wall ${(Date.now() - t0) / 1000}s`);
+const simT = frames / CAM;
+console.log(`receiver ${(procMs / procN).toFixed(1)} ms/frame · bands ok ${(bandsOk / bands * 100).toFixed(1)}% · useful ${useful} for K=${sender.K} (${(useful / sender.K).toFixed(3)}x) · dup ${dup}`);
+console.log(`${ok ? 'SUCCESS' : 'MISMATCH'}: ${simT.toFixed(1)} s simulated → ${(stream.length / 1024 / simT).toFixed(1)} KB/s, wall ${(Date.now() - t0) / 1000}s`);
+if (!ok) process.exit(1);
